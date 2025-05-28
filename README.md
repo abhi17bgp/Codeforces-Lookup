@@ -1,6 +1,6 @@
 # 💻 Codeforces Profile Viewer
 
-**Live Demo**: [abhi17bgp.github.io/codeforces](https://abhi17bgp.github.io/codeforces/)
+**Live Demo**: ([https://abhi17bgp.github.io/codeforces-Lookup/](https://abhi17bgp.github.io/Codeforces-Lookup/))
 
 This is a simple web app that allows users to check any **Codeforces profile** by entering a handle. It displays key information like rating, rank, problems solved, and more — fetched directly from the official Codeforces API.
 
