@@ -3,22 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Codeforces Lookup</title>
+    <meta name="description" content="Search and view Codeforces user profiles with detailed statistics and progress tracking">
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <div class="search-container">
-        <form id="cfForm">
-            <input type="text" placeholder="Enter Codeforces handle" class="inputBox" required />
-            <button type="submit" class="searchBtn">Search</button>
-        </form>
-        <div class="user-info-container"></div>
-        <div class="contests-container"></div>
-        <div class="user-contests-container"></div>
-
-
-
-    </div>
+    <header class="main-header">
+        <div class="header-content">
+            <div class="logo-title">
+                <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                <span>Codeforces Lookup</span>
+            </div>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon" aria-hidden="true"></i>
+                <i class="fa-solid fa-sun" aria-hidden="true"></i>
+            </button>
+        </div>
+    </header>
+    
+    <main>
+        <section class="profile-section">
+            <form id="cfForm" class="profile-search-form">
+                <div class="search-container">
+                    <input 
+                        type="text" 
+                        placeholder="Enter Codeforces handle" 
+                        class="inputBox" 
+                        required 
+                        autocomplete="off"
+                        aria-label="Codeforces username"
+                    />
+                    <button type="submit" class="searchBtn" aria-label="Search user profile">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        <span class="btn-text">Search</span>
+                    </button>
+                </div>
+            </form>
+            
+            <div class="profile-card user-info-container" role="region" aria-live="polite">
+                <div class="welcome-message">
+                    <i class="fa-solid fa-search welcome-icon" aria-hidden="true"></i>
+                    <h2>Welcome to Codeforces Lookup</h2>
+                    <p>Enter a Codeforces handle above to view detailed profile statistics and progress.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <footer class="main-footer">
+        <p>&copy; 2024 Codeforces Lookup. Data provided by <a href="https://codeforces.com" target="_blank" rel="noopener">Codeforces API</a></p>
+    </footer>
+    
     <script src="script.js"></script>
 </body>
 </html>
