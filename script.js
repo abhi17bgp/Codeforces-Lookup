@@ -65,13 +65,52 @@ const getUserInfo = async (handle) => {
 
         const url = `https://codeforces.com/api/user.info?handles=${handle}`;
         const response = await fetch(url);
+        
+        console.log("Response status:", response.status);
+        console.log("Response ok:", response.ok);
 
         if (!response.ok) {
+            // For 400 errors, try to get the response body to check if it's an invalid handle
+            if (response.status === 400) {
+                try {
+                    const errorData = await response.json();
+                    console.log("Error data for 400 status:", errorData);
+                    if (errorData.status === "FAILED" && errorData.comment) {
+                        if (errorData.comment.toLowerCase().includes('not found') ||
+                            errorData.comment.toLowerCase().includes('invalid') ||
+                            errorData.comment.toLowerCase().includes('illegal handle')) {
+                            throw new Error(`Handle "${handle}" does not exist. Please check the handle and try again.`);
+                        }
+                    }
+                } catch (parseError) {
+                    // Only catch JSON parsing errors, not our thrown errors
+                    if (parseError.message && parseError.message.includes('Handle') && parseError.message.includes('does not exist')) {
+                        throw parseError; // Re-throw our custom error
+                    }
+                    console.log("Parse error for 400 response:", parseError);
+                    // If we can't parse the response, fall back to generic message
+                }
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
         console.log("User info API response:", data);
+
+        // Check if the API returned an error (this is the key fix)
+        if (data.status === "FAILED") {
+            // Handle API-level errors (like invalid handle)
+            const errorMessage = data.comment || "Invalid handle or API error occurred.";
+            if (errorMessage.toLowerCase().includes('not found') || 
+                errorMessage.toLowerCase().includes('no data') ||
+                errorMessage.toLowerCase().includes('invalid') ||
+                errorMessage.toLowerCase().includes('incorrect') ||
+                errorMessage.toLowerCase().includes('handles: illegal handle')) {
+                throw new Error(`Handle "${handle}" does not exist. Please check the handle and try again.`);
+            } else {
+                throw new Error(errorMessage);
+            }
+        }
 
         if (data.status === "OK" && data.result && data.result.length > 0) {
             const userData = data.result[0];
@@ -85,11 +124,11 @@ const getUserInfo = async (handle) => {
             showUserData(userData);
             await getUserSubmissions(handle);
         } else {
-            throw new Error("No user found with this handle!");
+            throw new Error(`Handle "${handle}" does not exist. Please check the handle and try again.`);
         }
     } catch (error) {
         console.error("Error fetching user info:", error);
-        showErrorMessage(getErrorMessage(error));
+        showErrorMessage(getErrorMessage(error, 'user info'));
     }
 };
 
@@ -98,18 +137,30 @@ const getUserSubmissions = async (handle) => {
     try {
         const url = `https://codeforces.com/api/user.status?handle=${handle}`;
         const response = await fetch(url);
+        console.log("Submissions API response:", response.status);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
+        console.log("Submissions API response:", data);
+
+        // Check if the API returned an error
+        if (data.status === "FAILED") {
+            const errorMessage = data.comment || "Failed to fetch submissions.";
+            console.error("Submissions API error:", errorMessage);
+            // Don't throw error for submissions, just show 0 problems
+            showSolvedProblemsCount(0);
+            return;
+        }
 
         if (data.status === "OK") {
             const solvedProblemsCount = countSolvedProblems(data.result);
             showSolvedProblemsCount(solvedProblemsCount);
         } else {
-            throw new Error("Failed to fetch submissions. Please check the handle.");
+            console.error("Unexpected submissions API response:", data);
+            showSolvedProblemsCount(0);
         }
     } catch (error) {
         console.error("Error fetching submissions:", error);
@@ -133,14 +184,49 @@ const countSolvedProblems = (submissions) => {
 };
 
 // Helper function to get user-friendly error messages
-const getErrorMessage = (error) => {
-    if (error.message.includes('HTTP error')) {
-        return "Unable to connect to Codeforces API. Please check your internet connection and try again.";
+const getErrorMessage = (error, context = 'general') => {
+    const message = error.message || "An unexpected error occurred.";
+    
+    // Check for specific error types
+    if (message.includes('Handle') && message.includes('does not exist')) {
+        return message; // Return the specific handle error as-is
     }
-    if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+    
+    if (message.includes('HTTP error')) {
+        const statusMatch = message.match(/status: (\d+)/);
+        const status = statusMatch ? statusMatch[1] : 'unknown';
+        
+        switch (status) {
+            case '404':
+                return "Codeforces API endpoint not found. Please try again later.";
+            case '429':
+                return "Too many requests. Please wait a moment and try again.";
+            case '500':
+            case '502':
+            case '503':
+                return "Codeforces API is temporarily unavailable. Please try again later.";
+            default:
+                return `Unable to connect to Codeforces API (Error ${status}). Please check your internet connection and try again.`;
+        }
+    }
+    
+    if (message.includes('NetworkError') || 
+        message.includes('Failed to fetch') || 
+        message.includes('ERR_NETWORK') ||
+        message.includes('ERR_INTERNET_DISCONNECTED')) {
         return "Network error occurred. Please check your internet connection and try again.";
     }
-    return error.message || "An unexpected error occurred. Please try again.";
+    
+    if (message.includes('TypeError') && message.includes('fetch')) {
+        return "Unable to connect to Codeforces API. Please check your internet connection and try again.";
+    }
+    
+    // If it's an API error message, return it directly
+    if (context === 'user info' && !message.includes('HTTP') && !message.includes('Network')) {
+        return message;
+    }
+    
+    return message;
 };
 
 // Helper: Show loading spinner
@@ -349,140 +435,46 @@ const showSolvedProblemsCount = (count) => {
     const section = document.getElementById('progress-bar-section');
     if (section) {
         section.innerHTML = progressBar;
-        
-        // Animate progress bar
-        const progressBarElement = section.querySelector('.progress-bar');
-        if (progressBarElement) {
-            progressBarElement.style.width = '0%';
-            setTimeout(() => {
-                progressBarElement.style.width = `${percent}%`;
-            }, 100);
-        }
     }
 };
 
-// Function to handle the form submission
-const handleFormSubmission = (e) => {
+// Form submission event listener
+cfForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const handle = inputBox.value.trim();
     
+    const handle = inputBox.value.trim();
     if (!handle) {
-        showErrorMessage("Please enter a Codeforces handle");
+        showErrorMessage("Please enter a Codeforces handle.");
         inputBox.focus();
         return;
     }
-    
+
     // Validate handle format (basic validation)
-    if (!/^[a-zA-Z0-9._-]+$/.test(handle)) {
+    if (!/^[a-zA-Z0-9_.-]+$/.test(handle)) {
         showErrorMessage("Invalid handle format. Handle can only contain letters, numbers, dots, hyphens, and underscores.");
         inputBox.focus();
         return;
     }
-    
+
     if (handle.length > 24) {
-        showErrorMessage("Handle is too long. Maximum length is 24 characters.");
+        showErrorMessage("Handle is too long. Codeforces handles are typically 24 characters or less.");
         inputBox.focus();
         return;
     }
-    
+
     showLoading();
-    getUserInfo(handle);
-};
+    await getUserInfo(handle);
+});
 
-// Add event listeners
-cfForm.addEventListener('submit', handleFormSubmission);
+// Auto-focus on input when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => inputBox.focus(), 100);
+});
 
-// Add keyboard shortcut for search (Ctrl/Cmd + K)
-document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+// Handle Enter key in input field
+inputBox.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
         e.preventDefault();
-        inputBox.focus();
-        inputBox.select();
-    }
-    
-    // ESC to clear search and go back to welcome
-    if (e.key === 'Escape' && document.activeElement === inputBox) {
-        if (inputBox.value) {
-            inputBox.value = '';
-        } else {
-            userInfoContainer.innerHTML = `
-                <div class="welcome-message">
-                    <i class="fa-solid fa-search welcome-icon" aria-hidden="true"></i>
-                    <h2>Welcome to Codeforces Lookup</h2>
-                    <p>Enter a Codeforces handle above to view detailed profile statistics and progress.</p>
-                </div>
-            `;
-            showSearchBar();
-        }
+        cfForm.dispatchEvent(new Event('submit'));
     }
 });
-
-// Service worker registration for offline support (if available)
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-                console.log('SW registered: ', registration);
-            })
-            .catch((registrationError) => {
-                console.log('SW registration failed: ', registrationError);
-            });
-    });
-}
-
-// Add focus trap for better accessibility
-const trapFocus = (element) => {
-    const focusableElements = element.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const firstFocusableElement = focusableElements[0];
-    const lastFocusableElement = focusableElements[focusableElements.length - 1];
-
-    element.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-            if (e.shiftKey) {
-                if (document.activeElement === firstFocusableElement) {
-                    lastFocusableElement.focus();
-                    e.preventDefault();
-                }
-            } else {
-                if (document.activeElement === lastFocusableElement) {
-                    firstFocusableElement.focus();
-                    e.preventDefault();
-                }
-            }
-        }
-    });
-};
-
-// Initialize focus trap on the main form
-trapFocus(document.body);
-
-// Add smooth scrolling behavior
-document.documentElement.style.scrollBehavior = 'smooth';
-
-// Performance optimization: Debounce input events
-const debounce = (func, wait) => {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-};
-
-// Add input validation with debouncing
-const validateInput = debounce((value) => {
-    const isValid = /^[a-zA-Z0-9._-]*$/.test(value) && value.length <= 24;
-    inputBox.setCustomValidity(isValid ? '' : 'Invalid characters in handle');
-}, 300);
-
-inputBox.addEventListener('input', (e) => {
-    validateInput(e.target.value);
-});
-
-// Initialize app
-console.log('Codeforces Lookup App initialized');
