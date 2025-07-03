@@ -37,5 +37,3 @@ This is a simple web app that allows users to check any **Codeforces profile** b
 
 ---
 
-## 📁 File Structure
-
